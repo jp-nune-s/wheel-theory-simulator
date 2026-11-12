@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wheel Theory Simulator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel controls-panel">
+        <header class="title-block">
+          <p class="eyebrow">Matemática estendida</p>
+          <h1>Wheel Theory Simulator</h1>
+        </header>
+
+        <label class="field-label" for="expression">Expressão</label>
+        <div class="input-row">
+          <input id="expression" type="text" value="inf + inf" spellcheck="false" />
+          <button id="evaluate" class="action-button primary">Calcular</button>
+        </div>
+
+        <div class="quick-actions" aria-label="Operações rápidas">
+          <button class="quick-button" data-expression="2 + 3">2 + 3</button>
+          <button class="quick-button" data-expression="1 / 0">1 / 0</button>
+          <button class="quick-button" data-expression="inf + inf">inf + inf</button>
+          <button class="quick-button" data-expression="0 / 0">0 / 0</button>
+          <button class="quick-button" data-expression="2 * inf">2 * inf</button>
+          <button class="quick-button" data-expression="1 / x">1 / x</button>
+        </div>
+
+        <div class="result-card">
+          <span class="result-label">Resultado</span>
+          <strong id="result-value">0/0</strong>
+        </div>
+
+        <div id="alert-box" class="alert-box" role="status" aria-live="polite">
+          A roda absorve o valor central quando a operação dispara o colapso da estrutura.
+        </div>
+
+        <section class="history-block">
+          <h2>Histórico</h2>
+          <ul id="history-list" class="history-list"></ul>
+        </section>
+      </aside>
+
+      <main class="panel stage-panel">
+        <canvas id="wheelCanvas" width="760" height="760" aria-label="Visualização da roda"></canvas>
+        <div class="legend">
+          <span><i class="legend-swatch real"></i>Reais</span>
+          <span><i class="legend-swatch infinity"></i>∞</span>
+          <span><i class="legend-swatch bottom"></i>0/0</span>
+        </div>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
