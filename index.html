@@ -1,73 +1,89 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#07111f" />
-  <title>Wheel Theory Simulator</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <main class="app-shell">
-    <aside class="controls panel">
-      <p class="eyebrow">Visualizador educativo</p>
-      <h1>Roda projetiva</h1>
-      <p class="intro">Um único campo calcula expressões comuns e mostra famílias com incógnitas, como em uma calculadora gráfica.</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07111f" />
+    <title>Wheel Theory Simulator</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="controls panel">
+        <p class="eyebrow">Visualizador educativo</p>
+        <h1>Roda projetiva</h1>
+        <p class="intro">Um único terminal combina expressões normais, x e c, e a geometria da roda projetiva.</p>
 
-      <form id="calculator" novalidate>
-        <label class="label" for="expression">Expressão</label>
-        <div class="expression-row">
-          <input id="expression" type="text" value="x + c" spellcheck="false" autocomplete="off" aria-label="Expressão com números, x e c" />
-          <button id="evaluate" class="primary compact" type="submit">Calcular</button>
+        <form id="calculator" novalidate>
+          <label class="label" for="expression">Expressão</label>
+          <div class="expression-row">
+            <input id="expression" type="text" value="x + c" spellcheck="false" autocomplete="off" aria-label="Expressão com x e c" />
+            <button id="evaluate" class="primary compact" type="submit">Calcular</button>
+          </div>
+        </form>
+
+        <div class="presets" aria-label="Exemplos de expressões">
+          <button type="button" data-expression="x + c">x + c</button>
+          <button type="button" data-expression="x - c">x - c</button>
+          <button type="button" data-expression="1 / x">1 / x</button>
+          <button type="button" data-expression="-x">−x</button>
+          <button type="button" data-expression="1 / 0">1 / 0</button>
+          <button type="button" data-expression="0 / 0">0 / 0</button>
+          <button type="button" data-expression="inf + inf">∞ + ∞</button>
+          <button type="button" data-expression="2 * inf">2 × ∞</button>
         </div>
-      </form>
-      <div class="presets" aria-label="Exemplos de expressões">
-        <button type="button" data-expression="x + c">x + c</button>
-        <button type="button" data-expression="1 / x">1 / x</button>
-        <button type="button" data-expression="-x">−x</button>
-        <button type="button" data-expression="1 / 0">1 / 0</button>
-        <button type="button" data-expression="0 / 0">0 / 0</button>
-        <button type="button" data-expression="inf + inf">∞ + ∞</button>
-        <button type="button" data-expression="2 * inf">2 × ∞</button>
-      </div>
 
-      <div class="current-result" aria-live="polite">
-        <span>Resultado para os valores atuais</span>
-        <strong id="result-value">—</strong>
-      </div>
+        <div class="current-result" aria-live="polite">
+          <span>Resultado atual</span>
+          <strong id="result-value">—</strong>
+        </div>
 
-      <label class="label" for="xValue">x <output id="xOutput">1</output></label>
-      <input id="xValue" type="range" min="-5" max="5" step="0.05" value="1" />
-      <label class="label" for="cValue">c <output id="cOutput">1</output></label>
-      <input id="cValue" type="range" min="-5" max="5" step="0.05" value="1" />
-      <p class="hint">Os controles x e c são deslizantes, como os parâmetros de uma calculadora gráfica.</p>
+        <label class="label" for="xValue">x <output id="xOutput">1</output></label>
+        <input id="xValue" type="range" min="-5" max="5" step="0.05" value="1" />
 
-      <div class="divider"></div>
-      <p class="label view-label">Espelhar a visualização</p>
-      <div class="view-controls">
-        <button id="flipY" type="button" aria-pressed="false">↔ Eixo y</button>
-        <button id="flipX" type="button" aria-pressed="false">↕ Eixo x</button>
-        <button id="resetView" type="button">Repor vista</button>
-      </div>
-      <p class="hint">Os espelhos alteram a orientação do desenho, não o valor algébrico calculado.</p>
+        <label class="label" for="cValue">c <output id="cOutput">1</output></label>
+        <input id="cValue" type="range" min="-5" max="5" step="0.05" value="1" />
 
-      <div id="alert-box" class="notice" role="status" aria-live="polite">Digite uma expressão e pressione Enter ou Calcular. Use x e c para visualizar uma família de resultados.</div>
-    </aside>
+        <div class="divider"></div>
 
-    <section class="visual panel" aria-label="Gráfico da roda projetiva">
-      <div class="visual-heading">
-        <div><p class="eyebrow">Raios e valores</p><h2 id="operationTitle">x ↦ x + c</h2></div>
-        <span class="tag">Reta projetiva real</span>
-      </div>
-      <canvas id="wheelCanvas" width="900" height="760" aria-label="Círculo projetivo com raios numerados e família de resultados"></canvas>
-      <div class="legend">
-        <span><i class="swatch real"></i>valores reais</span>
-        <span><i class="swatch infinity"></i>∞: eixo absorvente</span>
-        <span><i class="swatch bottom"></i>⊥ = 0/0: colapso ao centro</span>
-      </div>
-      <p class="math-note">A circunferência representa a reta projetiva: 0 fica no polo sul e +∞/−∞ no polo norte. ⊥ é um elemento adicional; o centro iluminado indica visualmente o colapso, não um ponto da circunferência. Os raios rotulados mostram valores de referência e amostras da expressão.</p>
-    </section>
-  </main>
-  <script src="script.js" defer></script>
-</body>
+        <p class="label view-label">Espelhamento visual</p>
+        <div class="view-controls">
+          <button id="flipY" type="button" aria-pressed="false">↔ eixo y</button>
+          <button id="flipX" type="button" aria-pressed="false">↕ eixo x</button>
+          <button id="resetView" type="button">Repor vista</button>
+        </div>
+
+        <p class="hint">Os espelhos alteram a orientação do desenho sem mudar o valor algébrico da expressão.</p>
+
+        <div id="alert-box" class="notice" role="status" aria-live="polite">
+          Digite uma expressão e pressione Enter ou Calcular. Os raios numerados representam valores em uma família de soluções.
+        </div>
+      </aside>
+
+      <section class="visual panel" aria-label="Gráfico da roda projetiva">
+        <div class="visual-heading">
+          <div>
+            <p class="eyebrow">Raios e valores</p>
+            <h2 id="operationTitle">x + c</h2>
+          </div>
+          <span class="tag">reta projetiva real</span>
+        </div>
+
+        <canvas id="wheelCanvas" width="930" height="760" aria-label="Círculo da roda projetiva com raios numerados"></canvas>
+
+        <div class="legend">
+          <span><i class="swatch real"></i>valores reais</span>
+          <span><i class="swatch infinity"></i>infinito</span>
+          <span><i class="swatch bottom"></i>0/0 no centro</span>
+        </div>
+
+        <p class="math-note">
+          A circunferência representa a reta projetiva: 0 fica no polo sul, e +∞/−∞ se identificam com o polo norte.
+          O centro brilhante indica o colapso para 0/0; o eixo vertical no topo representa o colapso para infinito.
+        </p>
+      </section>
+    </main>
+
+    <script src="script.js" defer></script>
+  </body>
 </html>

@@ -1,6 +1,6 @@
 'use strict';
 
-const $ = id => document.getElementById(id);
+const $ = (id) => document.getElementById(id);
 const canvas = $('wheelCanvas');
 const ctx = canvas.getContext('2d');
 const input = $('expression');
@@ -8,231 +8,451 @@ const notice = $('alert-box');
 const resultEl = $('result-value');
 const INF = Object.freeze({ kind: 'inf' });
 const BOT = Object.freeze({ kind: 'bot' });
-const state = { flipY: false, flipX: false, ast: null, raf: 0, framePoints: [], targets: [], current: null };
-const SAMPLE_COUNT = 41;
-const X_MIN = -5, X_MAX = 5;
 
-function isSpecial(v, kind) { return v && v.kind === kind; }
-function isNumber(v) { return typeof v === 'number' && Number.isFinite(v); }
-function isZero(v) { return isNumber(v) && v === 0; }
-function format(v) {
-  if (v === INF) return '∞';
-  if (v === BOT) return '⊥ (0/0)';
-  if (Object.is(v, -0) || Math.abs(v) < 1e-10) return '0';
-  return Number(v.toPrecision(7)).toString();
+const state = {
+  flipX: false,
+  flipY: false,
+  ast: null,
+  family: [],
+};
+
+function isInf(v) { return v === INF; }
+function isBot(v) { return v === BOT; }
+function isFiniteNumber(v) { return typeof v === 'number' && Number.isFinite(v); }
+function isZero(v) { return isFiniteNumber(v) && v === 0; }
+
+function formatValue(v) {
+  if (isInf(v)) return '∞';
+  if (isBot(v)) return '⊥';
+  if (Math.abs(v) < 1e-10) return '0';
+  return Number(v.toFixed(4)).toString();
 }
-function add(a,b) {
-  if (a === BOT || b === BOT) return BOT;
-  if (a === INF && b === INF) return BOT;
-  if (a === INF || b === INF) return INF;
+
+function negate(v) {
+  if (isBot(v)) return BOT;
+  if (isInf(v)) return INF;
+  return -v;
+}
+
+function add(a, b) {
+  if (isBot(a) || isBot(b)) return BOT;
+  if (isInf(a) && isInf(b)) return BOT;
+  if (isInf(a) || isInf(b)) return INF;
   return a + b;
 }
-function negate(a) { return a === BOT ? BOT : a === INF ? INF : -a; }
-function subtract(a,b) { return add(a,negate(b)); }
-function multiply(a,b) {
-  if (a === BOT || b === BOT) return BOT;
-  if ((a === INF && isZero(b)) || (b === INF && isZero(a))) return BOT;
-  if (a === INF || b === INF) return INF;
+
+function subtract(a, b) {
+  return add(a, negate(b));
+}
+
+function multiply(a, b) {
+  if (isBot(a) || isBot(b)) return BOT;
+  if ((isInf(a) && isZero(b)) || (isInf(b) && isZero(a))) return BOT;
+  if (isInf(a) || isInf(b)) return INF;
   return a * b;
 }
+
 function inverse(a) {
-  if (a === BOT) return BOT;
-  if (a === INF) return 0;
+  if (isBot(a)) return BOT;
+  if (isInf(a)) return 0;
   if (a === 0) return INF;
   return 1 / a;
 }
-function divide(a,b) { return multiply(a,inverse(b)); }
 
-function tokenize(source) {
-  const normalized = source.trim().replaceAll('∞','inf').replaceAll('⊥','bot').replaceAll('×','*').replaceAll('÷','/').replaceAll('−','-');
-  const tokens = normalized.match(/inf|bot|(?:\d+(?:\.\d*)?|\.\d+)|[a-zA-Z]+|[()+*/-]/gi) || [];
-  if (tokens.join('').toLowerCase() !== normalized.replace(/\s/g,'').toLowerCase()) throw Error('Símbolo inválido. Use números, x, c, inf, ⊥, parênteses e + − × ÷.');
+function divide(a, b) {
+  if (isBot(a) || isBot(b)) return BOT;
+  if (isInf(a) && isInf(b)) return BOT;
+  if (isInf(b)) return isInf(a) ? BOT : 0;
+  if (isInf(a)) return (b === 0) ? BOT : INF;
+  if (b === 0) return (a === 0) ? BOT : INF;
+  return a / b;
+}
+
+function tokenize(inputText) {
+  const normalized = inputText
+    .trim()
+    .replaceAll('∞', 'inf')
+    .replaceAll('⊥', 'bot')
+    .replaceAll('×', '*')
+    .replaceAll('÷', '/')
+    .replaceAll('−', '-')
+    .replace(/\s+/g, '');
+
+  const tokens = normalized.match(/inf|bot|[a-z]+|(?:\d+(?:\.\d*)?|\.\d+)|[()+*/-]/gi) || [];
+  if (tokens.join('').toLowerCase() !== normalized.toLowerCase()) {
+    throw new Error('Símbolo inválido. Use números, x, c, inf, ⊥ e operadores + − * /');
+  }
   return tokens;
 }
-function parse(source) {
-  const tokens = tokenize(source);
-  if (!tokens.length) throw Error('Digite uma expressão.');
+
+function parseExpression(expressionText) {
+  const tokens = tokenize(expressionText);
+  if (!tokens.length) throw new Error('Digite uma expressão.');
   let i = 0;
+
   function primary() {
     const token = tokens[i++];
-    if (token === undefined) throw Error('Expressão incompleta.');
+    if (!token) throw new Error('Expressão incompleta.');
+
     if (token === '(') {
       const node = expression();
-      if (tokens[i++] !== ')') throw Error('Falta fechar parênteses.');
+      if (tokens[i++] !== ')') throw new Error('Falta fechar parênteses.');
       return node;
     }
-    if (token === '-') return { type:'unary', op:'-', child:primary() };
-    if (token === '+') return { type:'unary', op:'+', child:primary() };
-    if (/^inf$/i.test(token)) return { type:'value', value:INF };
-    if (/^bot$/i.test(token)) return { type:'value', value:BOT };
-    if (/^[xc]$/i.test(token)) return { type:'variable', name:token.toLowerCase() };
-    if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)) return { type:'value', value:Number(token) };
-    throw Error(`Valor desconhecido: ${token}`);
+
+    if (token === '-') return { type: 'unary', op: '-', child: primary() };
+    if (token === '+') return primary();
+
+    if (/^inf$/i.test(token)) return { type: 'value', value: INF };
+    if (/^bot$/i.test(token)) return { type: 'value', value: BOT };
+    if (/^[xc]$/i.test(token)) return { type: 'variable', name: token.toLowerCase() };
+    if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(token)) return { type: 'value', value: Number(token) };
+
+    throw new Error(`Valor desconhecido: ${token}`);
   }
+
   function term() {
     let node = primary();
     while (tokens[i] === '*' || tokens[i] === '/') {
-      const op = tokens[i++]; node = { type:'binary', op, left:node, right:primary() };
+      const op = tokens[i++];
+      node = { type: 'binary', op, left: node, right: primary() };
     }
     return node;
   }
+
   function expression() {
     let node = term();
     while (tokens[i] === '+' || tokens[i] === '-') {
-      const op = tokens[i++]; node = { type:'binary', op, left:node, right:term() };
+      const op = tokens[i++];
+      node = { type: 'binary', op, left: node, right: term() };
     }
     return node;
   }
+
   const ast = expression();
-  if (i !== tokens.length) throw Error(`Token inesperado: ${tokens[i]}`);
+  if (i !== tokens.length) throw new Error(`Token inesperado: ${tokens[i]}`);
   return ast;
 }
-function evaluateNode(node, vars) {
+
+function variablesIn(ast, set = new Set()) {
+  if (!ast) return set;
+  if (ast.type === 'variable') set.add(ast.name);
+  if (ast.child) variablesIn(ast.child, set);
+  if (ast.left) variablesIn(ast.left, set);
+  if (ast.right) variablesIn(ast.right, set);
+  return set;
+}
+
+function evaluateNode(node, values) {
   if (node.type === 'value') return node.value;
-  if (node.type === 'variable') return vars[node.name];
+  if (node.type === 'variable') return values[node.name];
   if (node.type === 'unary') {
-    const value = evaluateNode(node.child,vars);
-    return node.op === '-' ? negate(value) : value;
+    const inner = evaluateNode(node.child, values);
+    return node.op === '-' ? negate(inner) : inner;
   }
-  const a = evaluateNode(node.left,vars), b = evaluateNode(node.right,vars);
-  if (node.op === '+') return add(a,b);
-  if (node.op === '-') return subtract(a,b);
-  if (node.op === '*') return multiply(a,b);
-  return divide(a,b);
+
+  const left = evaluateNode(node.left, values);
+  const right = evaluateNode(node.right, values);
+
+  switch (node.op) {
+    case '+': return add(left, right);
+    case '-': return subtract(left, right);
+    case '*': return multiply(left, right);
+    case '/': return divide(left, right);
+    default: throw new Error(`Operador inválido: ${node.op}`);
+  }
 }
-function variablesIn(node, found = new Set()) {
-  if (node.type === 'variable') found.add(node.name);
-  if (node.child) variablesIn(node.child,found);
-  if (node.left) variablesIn(node.left,found);
-  if (node.right) variablesIn(node.right,found);
-  return found;
+
+function currentVariables() {
+  return {
+    x: Number($('xValue').value),
+    c: Number($('cValue').value),
+  };
 }
-function currentVars() { return { x:Number($('xValue').value), c:Number($('cValue').value) }; }
+
 function geometry() {
-  const w=canvas.width,h=canvas.height;
-  const r=Math.min(w*.32,(h-150)*.37);
-  return {w,h,cx:w*.51,cy:h*.45,r};
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w * 0.52;
+  const cy = h * 0.47;
+  const r = Math.min(w * 0.31, h * 0.37);
+  return { w, h, cx, cy, r };
 }
-function project(value,g) {
-  const {cx,cy,r}=g;
-  if (value === INF) return {x:cx,y:cy-r,kind:'inf'};
-  if (value === BOT) return {x:cx,y:cy,kind:'bot'};
-  const theta=2*Math.atan(value)-Math.PI/2;
-  return {x:cx+r*Math.cos(theta),y:cy-r*Math.sin(theta),kind:'real'};
+
+function applyMirror(x, y, g) {
+  const { cx, cy } = g;
+  const sx = state.flipX ? cx - (x - cx) : x;
+  const sy = state.flipY ? cy - (y - cy) : y;
+  return { x: sx, y: sy };
 }
-function mirror(p,g) {
-  return {x:g.cx+(state.flipY?-1:1)*(p.x-g.cx),y:g.cy+(state.flipX?-1:1)*(p.y-g.cy),kind:p.kind};
+
+function projectValue(value, g) {
+  const { cx, cy, r } = g;
+  if (isInf(value)) return applyMirror(cx, cy - r, g);
+  if (isBot(value)) return applyMirror(cx, cy, g);
+
+  const theta = 2 * Math.atan(value) - Math.PI / 2;
+  const px = cx + r * Math.cos(theta);
+  const py = cy - r * Math.sin(theta);
+  return applyMirror(px, py, g);
 }
-function mappedPoint(value,g) { return mirror(project(value,g),g); }
-function samplesFor(ast) {
-  const vars=variablesIn(ast);
-  const current=currentVars();
-  if (!vars.has('x')) return Array.from({length:SAMPLE_COUNT},()=>evaluateNode(ast,current));
-  return Array.from({length:SAMPLE_COUNT},(_,i)=>{
-    const x=X_MIN+(X_MAX-X_MIN)*i/(SAMPLE_COUNT-1);
-    return evaluateNode(ast,{...current,x});
-  });
+
+function labelForValue(value) {
+  if (isInf(value)) return '∞';
+  if (isBot(value)) return '⊥';
+  const v = Number(value);
+  if (Math.abs(v) < 1e-6) return '0';
+  return Number(v.toFixed(2)).toString();
 }
-function color(kind,alpha=1) {
-  if (kind==='inf') return `rgba(255,119,217,${alpha})`;
-  if (kind==='bot') return `rgba(255,202,104,${alpha})`;
-  return `rgba(104,216,255,${alpha})`;
-}
-function drawLabel(text,p,g,opts={}) {
-  const {cx,cy}=g, dx=p.x-cx,dy=p.y-cy, len=Math.hypot(dx,dy)||1;
-  const x=p.x+(dx/len)*(opts.offset||15), y=p.y+(dy/len)*(opts.offset||15);
-  ctx.font=opts.font||'13px Georgia'; ctx.fillStyle=opts.fill||'#c5d7ee';
-  ctx.textAlign=x<cx-8?'right':x>cx+8?'left':'center';
-  ctx.textBaseline=y<cy?'bottom':'top'; ctx.fillText(text,x,y);
-}
-function drawWheel(points, progress=1) {
-  const g=geometry(),{w,h,cx,cy,r}=g;
-  ctx.clearRect(0,0,w,h);
-  const bg=ctx.createRadialGradient(cx,cy,20,cx,cy,r*2.7); bg.addColorStop(0,'#1b2440'); bg.addColorStop(1,'#08121e'); ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
-  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle='rgba(220,230,255,.72)';ctx.lineWidth=2;ctx.stroke();
-  ctx.strokeStyle='rgba(185,204,235,.16)';ctx.lineWidth=1;
-  for(let i=1;i<=3;i++){ctx.beginPath();ctx.arc(cx,cy,r*i/4,0,Math.PI*2);ctx.stroke();}
-  ctx.beginPath();ctx.moveTo(cx-r,cy);ctx.lineTo(cx+r,cy);ctx.moveTo(cx,cy-r);ctx.lineTo(cx,cy+r);ctx.strokeStyle='rgba(205,220,245,.25)';ctx.stroke();
-  const refValues=[[-2,'−2'],[-1,'−1'],[-.5,'−½'],[0,'0'],[.5,'½'],[1,'1'],[2,'2']];
-  for(const [v,label] of refValues){
-    const p=mappedPoint(v,g);ctx.beginPath();ctx.moveTo(mirror({x:cx,y:cy},g).x,mirror({x:cx,y:cy},g).y);ctx.lineTo(p.x,p.y);ctx.strokeStyle='rgba(133,160,197,.16)';ctx.lineWidth=1;ctx.stroke();ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fillStyle='#9fb4d0';ctx.fill();drawLabel(label,p,g,{offset:13,font:'12px Georgia',fill:'#b9c8dc'});
+
+function drawBackground(g) {
+  const { w, h, cx, cy, r } = g;
+  ctx.clearRect(0, 0, w, h);
+
+  const bg = ctx.createRadialGradient(cx, cy, 20, cx, cy, r * 2.5);
+  bg.addColorStop(0, '#1b2440');
+  bg.addColorStop(1, '#08121e');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(220, 230, 255, 0.72)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(cx - r, cy);
+  ctx.lineTo(cx + r, cy);
+  ctx.moveTo(cx, cy - r);
+  ctx.lineTo(cx, cy + r);
+  ctx.strokeStyle = 'rgba(205, 220, 245, 0.2)';
+  ctx.stroke();
+
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(185, 204, 235, 0.12)';
+  for (let i = 1; i <= 4; i += 1) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, (r * i) / 4, 0, Math.PI * 2);
+    ctx.stroke();
   }
-  const north=mappedPoint(INF,g), south=mappedPoint(0,g);
-  ctx.font='bold 17px Georgia';ctx.textAlign='center';ctx.textBaseline=north.y<cy?'bottom':'top';ctx.fillStyle='#ff77d9';ctx.fillText('∞',north.x,north.y+(north.y<cy?-14:14));
-  ctx.font='13px Georgia';ctx.fillStyle='#68d8ff';ctx.textBaseline=south.y<cy?'bottom':'top';ctx.fillText('0',south.x,south.y+(south.y<cy?-12:12));
-  const eased=1-Math.pow(1-progress,3);
-  const drawPoints=points||state.targets;
-  if(drawPoints.length){
-    drawPoints.forEach((p,i)=>{
-      const alpha=.24+(i%5)*.045;
-      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(p.x,p.y);ctx.strokeStyle=color(p.kind,alpha);ctx.lineWidth=1.1;ctx.stroke();
-      if(i%5===0){ctx.beginPath();ctx.arc(p.x,p.y,2.4,0,Math.PI*2);ctx.fillStyle=color(p.kind,.9);ctx.fill();}
-      if(i%10===0 && p.kind!=='bot') drawLabel(`x=${format(X_MIN+(X_MAX-X_MIN)*i/(SAMPLE_COUNT-1))}`,p,g,{offset:7,font:'10px sans-serif',fill:'#93a6c1'});
+}
+
+function drawReferenceLabels(g) {
+  const { cx, cy, r } = g;
+  const refs = [-2, -1, -0.5, 0, 0.5, 1, 2];
+
+  refs.forEach((v) => {
+    const p = projectValue(v, g);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
+    ctx.fillStyle = '#a6b7d7';
+    ctx.fill();
+
+    const label = labelForValue(v);
+    ctx.font = '12px Georgia';
+    ctx.fillStyle = '#dfe9fb';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, p.x + 16, p.y - 12);
+  });
+
+  const north = projectValue(INF, g);
+  ctx.font = '16px Georgia';
+  ctx.fillStyle = '#ff77d9';
+  ctx.fillText('∞', north.x, north.y - 12);
+}
+
+function colorFor(value) {
+  if (isInf(value)) return '#ff77d9';
+  if (isBot(value)) return '#ffca68';
+  return '#68d8ff';
+}
+
+function drawFamily(ast) {
+  const g = geometry();
+  drawBackground(g);
+  drawReferenceLabels(g);
+
+  const samples = [];
+
+  for (let i = 0; i < 41; i += 1) {
+    const x = -5 + (i / 40) * 10;
+    const vars = { x, c: Number($('cValue').value) };
+    const result = evaluateNode(ast, vars);
+    samples.push({ value: result, xValue: x });
+  }
+
+  const allInf = samples.every((s) => isInf(s.value));
+  const allBot = samples.every((s) => isBot(s.value));
+
+  if (allInf) {
+    const north = projectValue(INF, g);
+    ctx.beginPath();
+    ctx.moveTo(g.cx, g.cy);
+    ctx.lineTo(north.x, north.y);
+    ctx.strokeStyle = '#ff77d9';
+    ctx.lineWidth = 5;
+    ctx.shadowColor = '#ff77d9';
+    ctx.shadowBlur = 20;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    const glow = ctx.createRadialGradient(g.cx, g.cy, 5, g.cx, g.cy, 70);
+    glow.addColorStop(0, 'rgba(255,119,217,0.85)');
+    glow.addColorStop(1, 'rgba(255,119,217,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, 70, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (allBot) {
+    const glow = ctx.createRadialGradient(g.cx, g.cy, 0, g.cx, g.cy, 80);
+    glow.addColorStop(0, 'rgba(255,202,104,1)');
+    glow.addColorStop(0.25, 'rgba(255,202,104,0.7)');
+    glow.addColorStop(1, 'rgba(255,202,104,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, 80, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(g.cx, g.cy, 12, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffca68';
+    ctx.fill();
+
+    ctx.font = 'bold 15px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffe8b4';
+    ctx.fillText('⊥ = 0/0', g.cx + 2, g.cy + 28);
+  } else {
+    samples.forEach((sample, index) => {
+      const p = projectValue(sample.value, g);
+      const alpha = 0.2 + 0.7 * (index / samples.length);
+
+      ctx.beginPath();
+      ctx.moveTo(g.cx, g.cy);
+      ctx.lineTo(p.x, p.y);
+      ctx.strokeStyle = colorFor(sample.value).replace(')', `, ${alpha})`).replace('rgb', 'rgba');
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+
+      if (index % 4 === 0) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2.8, 0, Math.PI * 2);
+        ctx.fillStyle = colorFor(sample.value);
+        ctx.fill();
+
+        ctx.font = '10px Georgia';
+        ctx.fillStyle = '#dfe9fb';
+        ctx.textAlign = 'center';
+        ctx.fillText(labelForValue(sample.value), p.x + 12, p.y - 10);
+      }
     });
   }
-  // The selected x gets a prominent ray and marker.
-  if(state.ast){
-    const val=evaluateNode(state.ast,currentVars()),p=mappedPoint(val,g);
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(p.x,p.y);ctx.strokeStyle=color(p.kind,.98);ctx.lineWidth=3.5;ctx.shadowColor=color(p.kind,.9);ctx.shadowBlur=12;ctx.stroke();ctx.shadowBlur=0;
-    ctx.beginPath();ctx.arc(p.x,p.y,6,0,Math.PI*2);ctx.fillStyle=color(p.kind,1);ctx.shadowColor=color(p.kind,1);ctx.shadowBlur=15;ctx.fill();ctx.shadowBlur=0;
-  }
-  // Infinity collapse: keep the circle and emphasize its single projective pole with one north-pointing axis.
-  const allInf=drawPoints.length>0&&drawPoints.every(p=>p.kind==='inf');
-  if(allInf){ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(north.x,north.y);ctx.strokeStyle='#ff77d9';ctx.lineWidth=7;ctx.shadowColor='#ff77d9';ctx.shadowBlur=22;ctx.stroke();ctx.shadowBlur=0;}
-  // Bottom collapse converges into the center hub. ⊥ remains an exceptional value, separate from the circle.
-  const allBot=drawPoints.length>0&&drawPoints.every(p=>p.kind==='bot');
-  if(allBot){const glow=ctx.createRadialGradient(cx,cy,1,cx,cy,48);glow.addColorStop(0,'rgba(255,224,160,.96)');glow.addColorStop(.24,'rgba(255,202,104,.58)');glow.addColorStop(1,'rgba(255,202,104,0)');ctx.fillStyle=glow;ctx.beginPath();ctx.arc(cx,cy,48,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.arc(cx,cy,12,0,Math.PI*2);ctx.fillStyle='#ffca68';ctx.fill();ctx.fillStyle='#ffe0a0';ctx.font='bold 12px Georgia';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('⊥ = 0/0',cx+17,cy);}
-  ctx.beginPath();ctx.arc(cx,cy,3.5,0,Math.PI*2);ctx.fillStyle='#f2eaff';ctx.fill();
+
+  // Highlight current x value on the wheel.
+  const currentValue = evaluateNode(ast, currentVariables());
+  const currentP = projectValue(currentValue, g);
+  ctx.beginPath();
+  ctx.moveTo(g.cx, g.cy);
+  ctx.lineTo(currentP.x, currentP.y);
+  ctx.strokeStyle = colorFor(currentValue);
+  ctx.lineWidth = 4;
+  ctx.shadowColor = colorFor(currentValue);
+  ctx.shadowBlur = 18;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  ctx.beginPath();
+  ctx.arc(currentP.x, currentP.y, 7, 0, Math.PI * 2);
+  ctx.fillStyle = colorFor(currentValue);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(g.cx, g.cy, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#f2eaff';
+  ctx.fill();
 }
-function getTargetPoints(ast) { const g=geometry();return samplesFor(ast).map(v=>mappedPoint(v,g)); }
-function animateTo(targets) {
-  if(state.raf) cancelAnimationFrame(state.raf);
-  const starts=state.framePoints.length===targets.length?state.framePoints:targets.map(()=>({x:geometry().cx,y:geometry().cy,kind:'real'}));
-  const startTime=performance.now(),duration=620;
-  function frame(now){
-    const t=Math.min(1,(now-startTime)/duration),ease=1-Math.pow(1-t,3);
-    state.framePoints=targets.map((p,i)=>({x:starts[i].x+(p.x-starts[i].x)*ease,y:starts[i].y+(p.y-starts[i].y)*ease,kind:t>.8?p.kind:starts[i].kind===p.kind?p.kind:p.kind}));
-    drawWheel(state.framePoints,t);
-    if(t<1)state.raf=requestAnimationFrame(frame);else{state.framePoints=targets;state.raf=0;drawWheel(state.framePoints,1);}
-  }
-  state.raf=requestAnimationFrame(frame);
+
+function updateResult(ast) {
+  const values = currentVariables();
+  const result = evaluateNode(ast, values);
+  $('xOutput').textContent = formatValue(values.x);
+  $('cOutput').textContent = formatValue(values.c);
+  resultEl.textContent = formatValue(result);
+  $('operationTitle').textContent = input.value.trim();
 }
-function setResult() {
-  if(!state.ast)return;
-  const value=evaluateNode(state.ast,currentVars());
-  resultEl.textContent=format(value);
-  $('xOutput').textContent=format(Number($('xValue').value));
-  $('cOutput').textContent=format(Number($('cValue').value));
-}
-function updateSliderView(animateFamily=false) {
-  if(!state.ast)return;
-  setResult();
-  if(animateFamily){state.targets=getTargetPoints(state.ast);animateTo(state.targets);}else drawWheel(state.framePoints.length?state.framePoints:state.targets,1);
-}
-function runExpression(record=true) {
+
+function runExpression() {
   try {
-    const ast=parse(input.value);
-    state.ast=ast;
-    const vars=variablesIn(ast),value=evaluateNode(ast,currentVars());
-    $('operationTitle').textContent=vars.size?`${input.value.trim()}  (x e c variáveis)`:`${input.value.trim()} = ${format(value)}`;
-    state.targets=getTargetPoints(ast);
-    animateTo(state.targets);
-    setResult();
-    if(value===BOT) notice.textContent='Resultado ⊥ = 0/0: os raios da família colapsam visualmente ao centro. ⊥ é um estado extra, não um número projetivo.';
-    else if(value===INF) notice.textContent='Resultado ∞: os raios convergem ao polo norte, destacado como um único eixo absorvente da visualização.';
-    else if(vars.size) notice.textContent=`Expressão com ${[...vars].join(' e ')}: os raios rotulados mostram amostras da família; ajuste os controles para explorar valores. A animação é visual, não uma soma vetorial.`;
-    else notice.textContent=`Resultado ${format(value)}. Uma expressão sem incógnitas calcula normalmente; os raios da amostra convergem ao resultado.`;
-    if(record){input.setAttribute('aria-invalid','false');}
-  } catch(error) {
-    input.setAttribute('aria-invalid','true');notice.textContent=error.message;resultEl.textContent='Expressão inválida';$('operationTitle').textContent='Corrija a expressão';
+    const ast = parseExpression(input.value);
+    state.ast = ast;
+    updateResult(ast);
+    drawFamily(ast);
+
+    const vars = variablesIn(ast);
+    const value = evaluateNode(ast, currentVariables());
+
+    if (isBot(value)) {
+      notice.textContent = 'Resultado ⊥ = 0/0: os raios colapsam ao centro. O centro torna-se o ponto absorvente da roda.';
+    } else if (isInf(value)) {
+      notice.textContent = 'Resultado ∞: os raios convergem para o eixo do infinito no topo da roda.';
+    } else if (vars.size > 0) {
+      notice.textContent = 'Expressão com incógnitas. Ajuste x e c para explorar a família de resultados e a reflexão visual da roda.';
+    } else {
+      notice.textContent = `Resultado ${formatValue(value)}. A expressão é estritamente numérica e a roda mostra sua localização na reta projetiva.`;
+    }
+  } catch (error) {
+    notice.textContent = error.message;
+    resultEl.textContent = 'Erro';
+    $('operationTitle').textContent = 'Expressão inválida';
   }
 }
-$('calculator').addEventListener('submit',event=>{event.preventDefault();runExpression();});
-input.addEventListener('input',()=>input.setAttribute('aria-invalid','false'));
-document.querySelectorAll('.presets button').forEach(button=>button.addEventListener('click',()=>{input.value=button.dataset.expression;runExpression();}));
-$('xValue').addEventListener('input',()=>updateSliderView(false));
-$('cValue').addEventListener('input',()=>updateSliderView(true));
-$('flipY').addEventListener('click',()=>{state.flipY=!state.flipY;$('flipY').setAttribute('aria-pressed',String(state.flipY));state.targets=getTargetPoints(state.ast);state.framePoints=state.targets;drawWheel(state.targets,1);});
-$('flipX').addEventListener('click',()=>{state.flipX=!state.flipX;$('flipX').setAttribute('aria-pressed',String(state.flipX));state.targets=getTargetPoints(state.ast);state.framePoints=state.targets;drawWheel(state.targets,1);});
-$('resetView').addEventListener('click',()=>{state.flipX=false;state.flipY=false;$('flipX').setAttribute('aria-pressed','false');$('flipY').setAttribute('aria-pressed','false');state.targets=getTargetPoints(state.ast);state.framePoints=state.targets;drawWheel(state.targets,1);});
-state.ast=parse(input.value);state.targets=getTargetPoints(state.ast);state.framePoints=state.targets;updateSliderView(false);
+
+$('calculator').addEventListener('submit', (event) => {
+  event.preventDefault();
+  runExpression();
+});
+
+$('xValue').addEventListener('input', () => {
+  if (!state.ast) return;
+  updateResult(state.ast);
+  drawFamily(state.ast);
+});
+
+$('cValue').addEventListener('input', () => {
+  if (!state.ast) return;
+  updateResult(state.ast);
+  drawFamily(state.ast);
+});
+
+$('flipY').addEventListener('click', () => {
+  state.flipY = !state.flipY;
+  $('flipY').setAttribute('aria-pressed', String(state.flipY));
+  if (state.ast) drawFamily(state.ast);
+});
+
+$('flipX').addEventListener('click', () => {
+  state.flipX = !state.flipX;
+  $('flipX').setAttribute('aria-pressed', String(state.flipX));
+  if (state.ast) drawFamily(state.ast);
+});
+
+$('resetView').addEventListener('click', () => {
+  state.flipX = false;
+  state.flipY = false;
+  $('flipX').setAttribute('aria-pressed', 'false');
+  $('flipY').setAttribute('aria-pressed', 'false');
+  if (state.ast) drawFamily(state.ast);
+});
+
+document.querySelectorAll('.presets button').forEach((button) => {
+  button.addEventListener('click', () => {
+    input.value = button.dataset.expression;
+    runExpression();
+  });
+});
+
+state.ast = parseExpression(input.value);
+updateResult(state.ast);
+drawFamily(state.ast);
