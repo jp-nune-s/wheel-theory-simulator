@@ -12,51 +12,60 @@
     <aside class="controls panel">
       <p class="eyebrow">Visualizador educativo</p>
       <h1>Roda projetiva</h1>
-      <p class="intro">Explore como transformações de uma variável movem uma família de valores pela reta projetiva.</p>
+      <p class="intro">Um único campo calcula expressões comuns e mostra famílias com incógnitas, como em uma calculadora gráfica.</p>
 
-      <label class="label" for="transform">Transformação aplicada a x</label>
-      <select id="transform">
-        <option value="translate">x ↦ x + c</option>
-        <option value="negate">x ↦ −x</option>
-        <option value="reciprocal">x ↦ 1/x</option>
-        <option value="scale">x ↦ c · x</option>
-        <option value="infinity">x ↦ ∞ · x</option>
-        <option value="bottom">x ↦ x + ⊥</option>
-      </select>
+      <form id="calculator" novalidate>
+        <label class="label" for="expression">Expressão</label>
+        <div class="expression-row">
+          <input id="expression" type="text" value="x + c" spellcheck="false" autocomplete="off" aria-label="Expressão com números, x e c" />
+          <button id="evaluate" class="primary compact" type="submit">Calcular</button>
+        </div>
+      </form>
+      <div class="presets" aria-label="Exemplos de expressões">
+        <button type="button" data-expression="x + c">x + c</button>
+        <button type="button" data-expression="1 / x">1 / x</button>
+        <button type="button" data-expression="-x">−x</button>
+        <button type="button" data-expression="1 / 0">1 / 0</button>
+        <button type="button" data-expression="0 / 0">0 / 0</button>
+        <button type="button" data-expression="inf + inf">∞ + ∞</button>
+        <button type="button" data-expression="2 * inf">2 × ∞</button>
+      </div>
 
-      <label class="label" for="xValue">Valor atual de x <output id="xOutput">1</output></label>
+      <div class="current-result" aria-live="polite">
+        <span>Resultado para os valores atuais</span>
+        <strong id="result-value">—</strong>
+      </div>
+
+      <label class="label" for="xValue">x <output id="xOutput">1</output></label>
       <input id="xValue" type="range" min="-5" max="5" step="0.05" value="1" />
-
-      <label class="label" for="cValue">Parâmetro c <output id="cOutput">1</output></label>
+      <label class="label" for="cValue">c <output id="cOutput">1</output></label>
       <input id="cValue" type="range" min="-5" max="5" step="0.05" value="1" />
-
-      <button id="sweep" class="primary">▶ Percorrer x automaticamente</button>
-      <div class="current-result"><span>Imagem do x atual</span><strong id="mappedValue">2</strong></div>
+      <p class="hint">Os controles x e c são deslizantes, como os parâmetros de uma calculadora gráfica.</p>
 
       <div class="divider"></div>
-      <label class="label" for="expression">Calcular uma expressão</label>
-      <div class="expression-row">
-        <input id="expression" type="text" value="inf + inf" spellcheck="false" aria-label="Expressão" />
-        <button id="evaluate" class="primary compact">Calcular</button>
+      <p class="label view-label">Espelhar a visualização</p>
+      <div class="view-controls">
+        <button id="flipY" type="button" aria-pressed="false">↔ Eixo y</button>
+        <button id="flipX" type="button" aria-pressed="false">↕ Eixo x</button>
+        <button id="resetView" type="button">Repor vista</button>
       </div>
-      <div class="presets" aria-label="Exemplos">
-        <button data-expression="1 / 0">1 / 0</button>
-        <button data-expression="0 / 0">0 / 0</button>
-        <button data-expression="inf + inf">∞ + ∞</button>
-        <button data-expression="2 * inf">2 × ∞</button>
-      </div>
-      <div id="alert-box" class="notice" role="status" aria-live="polite">As linhas coloridas mostram uma família de entradas e suas imagens.</div>
+      <p class="hint">Os espelhos alteram a orientação do desenho, não o valor algébrico calculado.</p>
+
+      <div id="alert-box" class="notice" role="status" aria-live="polite">Digite uma expressão e pressione Enter ou Calcular. Use x e c para visualizar uma família de resultados.</div>
     </aside>
 
-    <section class="visual panel" aria-label="Visualização geométrica">
-      <div class="visual-heading"><div><p class="eyebrow">Família de valores</p><h2 id="operationTitle">x ↦ x + c</h2></div><span class="tag">Reta projetiva real</span></div>
-      <canvas id="wheelCanvas" width="900" height="760" aria-label="Círculo da reta projetiva e família de raios"></canvas>
-      <div class="legend">
-        <span><i class="swatch real"></i>racionais/reais</span>
-        <span><i class="swatch infinity"></i>∞</span>
-        <span><i class="swatch bottom"></i>⊥ = 0/0 (separado)</span>
+    <section class="visual panel" aria-label="Gráfico da roda projetiva">
+      <div class="visual-heading">
+        <div><p class="eyebrow">Raios e valores</p><h2 id="operationTitle">x ↦ x + c</h2></div>
+        <span class="tag">Reta projetiva real</span>
       </div>
-      <p class="math-note">A circunferência é uma representação da reta projetiva: 0 fica no polo sul e +∞/−∞ identificam-se no polo norte. ⊥ é um elemento algébrico extra, não um ponto dessa circunferência. As linhas e o efeito de concentração são uma visualização da família, não uma soma vetorial.</p>
+      <canvas id="wheelCanvas" width="900" height="760" aria-label="Círculo projetivo com raios numerados e família de resultados"></canvas>
+      <div class="legend">
+        <span><i class="swatch real"></i>valores reais</span>
+        <span><i class="swatch infinity"></i>∞: eixo absorvente</span>
+        <span><i class="swatch bottom"></i>⊥ = 0/0: colapso ao centro</span>
+      </div>
+      <p class="math-note">A circunferência representa a reta projetiva: 0 fica no polo sul e +∞/−∞ no polo norte. ⊥ é um elemento adicional; o centro iluminado indica visualmente o colapso, não um ponto da circunferência. Os raios rotulados mostram valores de referência e amostras da expressão.</p>
     </section>
   </main>
   <script src="script.js" defer></script>
