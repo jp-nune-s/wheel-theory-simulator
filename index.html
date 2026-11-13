@@ -12,13 +12,13 @@
       <aside class="controls panel">
         <p class="eyebrow">Visualizador educativo</p>
         <h1>Roda projetiva</h1>
-        <p class="intro">Um único terminal combina expressões normais, x e c, e a geometria da roda projetiva.</p>
+        <p class="intro">Um terminal para expressões numéricas e famílias com x e c. Ajuste os parâmetros ou anime-os quando quiser.</p>
 
         <form id="calculator" novalidate>
           <label class="label" for="expression">Expressão</label>
           <div class="expression-row">
             <input id="expression" type="text" value="x + c" spellcheck="false" autocomplete="off" aria-label="Expressão com x e c" />
-            <button id="evaluate" class="primary compact" type="submit">Calcular</button>
+            <button class="primary compact" type="submit">Calcular</button>
           </div>
         </form>
 
@@ -34,56 +34,45 @@
         </div>
 
         <div class="current-result" aria-live="polite">
-          <span>Resultado atual</span>
+          <span>Resultado para os parâmetros atuais</span>
           <strong id="result-value">—</strong>
         </div>
 
-        <label class="label" for="xValue">x <output id="xOutput">1</output></label>
+        <div class="slider-heading"><label class="label" for="xValue">x <output id="xOutput">1</output></label></div>
         <input id="xValue" type="range" min="-5" max="5" step="0.05" value="1" />
+        <button id="animateX" class="animate-button" type="button" aria-pressed="false">▶ Animar x</button>
 
-        <label class="label" for="cValue">c <output id="cOutput">1</output></label>
+        <div class="slider-heading"><label class="label" for="cValue">c <output id="cOutput">1</output></label></div>
         <input id="cValue" type="range" min="-5" max="5" step="0.05" value="1" />
+        <button id="animateC" class="animate-button" type="button" aria-pressed="false">▶ Animar c</button>
+        <p class="hint">A animação é opcional. Arraste os controles para explorar manualmente, como em uma calculadora gráfica.</p>
 
         <div class="divider"></div>
-
-        <p class="label view-label">Espelhamento visual</p>
+        <p class="label view-label">Espelhamento da vista</p>
         <div class="view-controls">
           <button id="flipY" type="button" aria-pressed="false">↔ eixo y</button>
           <button id="flipX" type="button" aria-pressed="false">↕ eixo x</button>
           <button id="resetView" type="button">Repor vista</button>
         </div>
+        <p id="mirrorHint" class="hint mirror-hint">Em −x e 1/x, a família já aparece refletida pelo próprio mapeamento.</p>
 
-        <p class="hint">Os espelhos alteram a orientação do desenho sem mudar o valor algébrico da expressão.</p>
-
-        <div id="alert-box" class="notice" role="status" aria-live="polite">
-          Digite uma expressão e pressione Enter ou Calcular. Os raios numerados representam valores em uma família de soluções.
-        </div>
+        <div id="alert-box" class="notice" role="status" aria-live="polite">Digite uma expressão e pressione Enter ou Calcular.</div>
       </aside>
 
       <section class="visual panel" aria-label="Gráfico da roda projetiva">
         <div class="visual-heading">
-          <div>
-            <p class="eyebrow">Raios e valores</p>
-            <h2 id="operationTitle">x + c</h2>
-          </div>
+          <div><p class="eyebrow">Raios e valores</p><h2 id="operationTitle">x + c</h2></div>
           <span class="tag">reta projetiva real</span>
         </div>
-
-        <canvas id="wheelCanvas" width="930" height="760" aria-label="Círculo da roda projetiva com raios numerados"></canvas>
-
+        <canvas id="wheelCanvas" width="930" height="760" aria-label="Círculo projetivo com raios numerados e família de resultados"></canvas>
         <div class="legend">
           <span><i class="swatch real"></i>valores reais</span>
-          <span><i class="swatch infinity"></i>infinito</span>
-          <span><i class="swatch bottom"></i>0/0 no centro</span>
+          <span><i class="swatch infinity"></i>∞: polo norte</span>
+          <span><i class="swatch bottom"></i>⊥ = 0/0: centro</span>
         </div>
-
-        <p class="math-note">
-          A circunferência representa a reta projetiva: 0 fica no polo sul, e +∞/−∞ se identificam com o polo norte.
-          O centro brilhante indica o colapso para 0/0; o eixo vertical no topo representa o colapso para infinito.
-        </p>
+        <p class="math-note">A circunferência representa a reta projetiva: 0 fica no polo sul e +∞/−∞ se identificam no polo norte. O centro iluminado é uma representação visual de ⊥, não um ponto da reta projetiva. O círculo mantém escala igual nos dois eixos.</p>
       </section>
     </main>
-
     <script src="script.js" defer></script>
   </body>
 </html>
