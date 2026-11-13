@@ -1,50 +1,64 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Wheel Theory Simulator</title>
-    <link rel="stylesheet" href="styles.css" />
-  </head>
-  <body>
-    <div class="app-shell">
-      <aside class="panel controls-panel">
-        <header class="title-block">
-          <p class="eyebrow">Matemática estendida</p>
-          <h1>Wheel Theory Simulator</h1>
-        </header>
-        <label class="field-label" for="expression">Expressão</label>
-        <div class="input-row">
-          <input id="expression" type="text" value="inf + inf" spellcheck="false" />
-          <button id="evaluate" class="action-button primary">Calcular</button>
-        </div>
-        <div class="quick-actions" aria-label="Operações rápidas">
-          <button class="quick-button" data-expression="2 + 3">2 + 3</button>
-          <button class="quick-button" data-expression="1 / 0">1 / 0</button>
-          <button class="quick-button" data-expression="inf + inf">inf + inf</button>
-          <button class="quick-button" data-expression="0 / 0">0 / 0</button>
-          <button class="quick-button" data-expression="2 * inf">2 * inf</button>
-          <button class="quick-button" data-expression="1 / 2">1 / 2</button>
-        </div>
-        <div class="result-card">
-          <span class="result-label">Resultado</span>
-          <strong id="result-value">0/0</strong>
-        </div>
-        <div id="alert-box" class="alert-box" role="status" aria-live="polite">Digite uma expressão ou escolha uma operação rápida.</div>
-        <section class="history-block">
-          <h2>Histórico</h2>
-          <ul id="history-list" class="history-list"></ul>
-        </section>
-      </aside>
-      <main class="panel stage-panel">
-        <canvas id="wheelCanvas" width="760" height="760" aria-label="Reta projetiva real representada como círculo"></canvas>
-        <div class="legend">
-          <span><i class="legend-swatch real"></i>Racionais</span>
-          <span><i class="legend-swatch infinity"></i>∞</span>
-          <span><i class="legend-swatch bottom"></i>⊥ (0/0)</span>
-        </div>
-      </main>
-    </div>
-    <script src="script.js" defer></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#07111f" />
+  <title>Wheel Theory Simulator</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="controls panel">
+      <p class="eyebrow">Visualizador educativo</p>
+      <h1>Roda projetiva</h1>
+      <p class="intro">Explore como transformações de uma variável movem uma família de valores pela reta projetiva.</p>
+
+      <label class="label" for="transform">Transformação aplicada a x</label>
+      <select id="transform">
+        <option value="translate">x ↦ x + c</option>
+        <option value="negate">x ↦ −x</option>
+        <option value="reciprocal">x ↦ 1/x</option>
+        <option value="scale">x ↦ c · x</option>
+        <option value="infinity">x ↦ ∞ · x</option>
+        <option value="bottom">x ↦ x + ⊥</option>
+      </select>
+
+      <label class="label" for="xValue">Valor atual de x <output id="xOutput">1</output></label>
+      <input id="xValue" type="range" min="-5" max="5" step="0.05" value="1" />
+
+      <label class="label" for="cValue">Parâmetro c <output id="cOutput">1</output></label>
+      <input id="cValue" type="range" min="-5" max="5" step="0.05" value="1" />
+
+      <button id="sweep" class="primary">▶ Percorrer x automaticamente</button>
+      <div class="current-result"><span>Imagem do x atual</span><strong id="mappedValue">2</strong></div>
+
+      <div class="divider"></div>
+      <label class="label" for="expression">Calcular uma expressão</label>
+      <div class="expression-row">
+        <input id="expression" type="text" value="inf + inf" spellcheck="false" aria-label="Expressão" />
+        <button id="evaluate" class="primary compact">Calcular</button>
+      </div>
+      <div class="presets" aria-label="Exemplos">
+        <button data-expression="1 / 0">1 / 0</button>
+        <button data-expression="0 / 0">0 / 0</button>
+        <button data-expression="inf + inf">∞ + ∞</button>
+        <button data-expression="2 * inf">2 × ∞</button>
+      </div>
+      <div id="alert-box" class="notice" role="status" aria-live="polite">As linhas coloridas mostram uma família de entradas e suas imagens.</div>
+    </aside>
+
+    <section class="visual panel" aria-label="Visualização geométrica">
+      <div class="visual-heading"><div><p class="eyebrow">Família de valores</p><h2 id="operationTitle">x ↦ x + c</h2></div><span class="tag">Reta projetiva real</span></div>
+      <canvas id="wheelCanvas" width="900" height="760" aria-label="Círculo da reta projetiva e família de raios"></canvas>
+      <div class="legend">
+        <span><i class="swatch real"></i>racionais/reais</span>
+        <span><i class="swatch infinity"></i>∞</span>
+        <span><i class="swatch bottom"></i>⊥ = 0/0 (separado)</span>
+      </div>
+      <p class="math-note">A circunferência é uma representação da reta projetiva: 0 fica no polo sul e +∞/−∞ identificam-se no polo norte. ⊥ é um elemento algébrico extra, não um ponto dessa circunferência. As linhas e o efeito de concentração são uma visualização da família, não uma soma vetorial.</p>
+    </section>
+  </main>
+  <script src="script.js" defer></script>
+</body>
 </html>

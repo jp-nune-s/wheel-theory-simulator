@@ -1,131 +1,136 @@
-// Small educational model of the rational wheel. The exceptional element ⊥ is
-// deliberately drawn separately from the projective circle.
-const canvas = document.getElementById('wheelCanvas');
-const ctx = canvas.getContext('2d');
-const input = document.getElementById('expression');
-const resultEl = document.getElementById('result-value');
-const alertEl = document.getElementById('alert-box');
-const historyEl = document.getElementById('history-list');
-const INF = Object.freeze({ kind: 'infinity' });
-const BOT = Object.freeze({ kind: 'bottom' });
-const rational = (n, d = 1n) => {
-  if (d === 0n) return n === 0n ? BOT : INF;
-  if (d < 0n) { n = -n; d = -d; }
-  const gcd = (a, b) => b === 0n ? (a < 0n ? -a : a) : gcd(b, a % b);
-  const g = gcd(n, d);
-  return { kind: 'rational', n: n / g, d: d / g };
-};
-const zero = () => rational(0n);
-const isZero = x => x.kind === 'rational' && x.n === 0n;
-const show = x => x.kind === 'infinity' ? '∞' : x.kind === 'bottom' ? '⊥ (0/0)' : x.d === 1n ? `${x.n}` : `${x.n}/${x.d}`;
-const add = (a,b) => {
-  if (a.kind === 'bottom' || b.kind === 'bottom') return BOT;
-  if (a.kind === 'infinity' && b.kind === 'infinity') return BOT;
-  if (a.kind === 'infinity' || b.kind === 'infinity') return INF;
-  return rational(a.n*b.d + b.n*a.d, a.d*b.d);
-};
-const sub = (a,b) => {
-  if (a.kind === 'bottom' || b.kind === 'bottom') return BOT;
-  if (a.kind === 'infinity' || b.kind === 'infinity') return a.kind === b.kind ? BOT : INF;
-  return rational(a.n*b.d - b.n*a.d, a.d*b.d);
-};
-const mul = (a,b) => {
-  if (a.kind === 'bottom' || b.kind === 'bottom') return BOT;
-  if (a.kind === 'infinity' && b.kind === 'infinity') return INF;
-  if (a.kind === 'infinity') return isZero(b) ? BOT : INF;
-  if (b.kind === 'infinity') return isZero(a) ? BOT : INF;
-  return rational(a.n*b.n, a.d*b.d);
-};
-const div = (a,b) => {
-  if (a.kind === 'bottom' || b.kind === 'bottom') return BOT;
-  if (a.kind === 'infinity' && b.kind === 'infinity') return BOT;
-  if (b.kind === 'infinity') return a.kind === 'infinity' ? BOT : zero();
-  if (a.kind === 'infinity') return isZero(b) ? BOT : INF;
-  if (isZero(b)) return isZero(a) ? BOT : INF;
-  return rational(a.n*b.d, a.d*b.n);
-};
-function tokenize(text) {
-  const s = text.replace(/∞/g, 'inf').replace(/⊥/g, 'bot').replace(/\s+/g, '');
-  const tokens = s.match(/inf|bot|(?:\d+(?:\.\d*)?|\.\d+)|[()+*/-]/gi) || [];
-  if (tokens.join('').toLowerCase() !== s.toLowerCase()) throw Error('Expressão contém símbolo inválido. Use números, inf, bot, +, -, * e /.');
-  return tokens;
+'use strict';
+const canvas=document.getElementById('wheelCanvas'),ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id);
+const controls={mode:$('transform'),x:$('xValue'),c:$('cValue'),xo:$('xOutput'),co:$('cOutput'),mapped:$('mappedValue'),title:$('operationTitle'),notice:$('alert-box')};
+const INF={kind:'inf'},BOT={kind:'bot'};
+let sweepTimer=null;
+const fmt=n=>{if(!Number.isFinite(n))return '∞';if(Math.abs(n)<1e-10)return '0';return Number(n.toFixed(3)).toString()};
+function modeLabel(){
+  const m=controls.mode.value;
+  const c=Number(controls.c.value);
+  const str = (() => {
+    if (m === 'translate') return `x ↦ x + ${fmt(c)}`;
+    if (m === 'negate') return 'x ↦ −x';
+    if (m === 'reciprocal') return 'x ↦ 1/x';
+    if (m === 'scale') return `x ↦ ${fmt(c)} · x`;
+    if (m === 'infinity') return 'x ↦ ∞ · x';
+    if (m === 'bottom') return 'x ↦ x + ⊥';
+    return 'x ↦ x + c';
+  })();
+  controls.title.textContent = str;
+  return str;
 }
-function parse(text) {
-  const t = tokenize(text); let i = 0;
-  function primary() {
-    const v = t[i++];
-    if (v === undefined) throw Error('Expressão incompleta.');
-    if (v === '(') { const x = expression(); if (t[i++] !== ')') throw Error('Falta fechar parênteses.'); return x; }
-    if (v === '-') return unary(primary());
-    if (v === '+') return primary();
-    if (/^inf$/i.test(v)) return INF;
-    if (/^bot$/i.test(v)) return BOT;
-    if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(v)) {
-      const [whole, frac = ''] = v.split('.'); return rational(BigInt((whole || '0') + frac), 10n ** BigInt(frac.length));
-    }
-    throw Error(`Símbolo inesperado: ${v}`);
-  }
-  function unary(x) { return x.kind === 'rational' ? rational(-x.n, x.d) : x; }
-  function product() {
-    let x = primary();
-    while (t[i] === '*' || t[i] === '/') { const op = t[i++], y = primary(); x = op === '*' ? mul(x,y) : div(x,y); }
-    return x;
-  }
-  function expression() {
-    let x = product();
-    while (t[i] === '+' || t[i] === '-') { const op = t[i++], y = product(); x = op === '+' ? add(x,y) : sub(x,y); }
-    return x;
-  }
-  if (!t.length) throw Error('Digite uma expressão.');
-  const value = expression();
-  if (i !== t.length) throw Error(`Token inesperado: ${t[i]}`);
-  return value;
-}
-function pointFor(value, cx, cy, radius) {
-  if (value.kind === 'infinity') return { x: cx, y: cy-radius };
-  const x = Number(value.n) / Number(value.d);
-  const angle = 2 * Math.atan(x) - Math.PI / 2;
-  // Screen y is inverted: zero is at the south pole, +∞ at the north pole.
-  return { x: cx + radius*Math.cos(angle), y: cy - radius*Math.sin(angle) };
-}
-function draw(value) {
-  const w = canvas.width, h = canvas.height, cx = w/2, cy = h/2, r = 250;
+function transform(v){const c=Number(controls.c.value),m=controls.mode.value; if(m==='translate') return v+c; if(m==='negate') return -v; if(m==='reciprocal') return v===0?INF:1/v; if(m==='scale') return c===0?0:v*c; if(m==='infinity') return v===0?BOT:INF; if(m==='bottom') return BOT; return v; }
+function project(v,cx,cy,r){if(v===INF)return{x:cx,y:cy-r,kind:'inf'}; if(v===BOT)return{x:cx,y:cy+r+76,kind:'bot'}; const a=2*Math.atan(v)-Math.PI/2; return{x:cx+r*Math.cos(a), y:cy-r*Math.sin(a), kind:'real'} }
+function colorFor(kind){if(kind==='inf')return '#ff77d9'; if(kind==='bot')return '#ffca68'; return '#72dcff';}
+function draw(){
+  const w=canvas.width,h=canvas.height,cx=w*0.52,cy=h*0.47,r=Math.min(w*0.34,h*0.34);
   ctx.clearRect(0,0,w,h);
-  const bg = ctx.createRadialGradient(cx,cy,30,cx,cy,500);
-  bg.addColorStop(0,'#14243a'); bg.addColorStop(1,'#050d18'); ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
-  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle='rgba(220,235,255,.55)'; ctx.lineWidth=2; ctx.stroke();
-  // Coordinate axes and projective poles: 0 is south; ±∞ is one north point.
-  ctx.beginPath(); ctx.moveTo(cx-r,cy); ctx.lineTo(cx+r,cy); ctx.moveTo(cx,cy-r); ctx.lineTo(cx,cy+r);
-  ctx.strokeStyle='rgba(220,235,255,.18)'; ctx.lineWidth=1; ctx.stroke();
-  ctx.fillStyle='#ff6de8'; ctx.font='bold 22px sans-serif'; ctx.textAlign='center'; ctx.fillText('∞',cx,cy-r-18);
-  ctx.fillStyle='#68d8ff'; ctx.fillText('0',cx,cy+r+28);
-  ctx.fillStyle='#dce7ff'; ctx.font='14px sans-serif'; ctx.fillText('reais negativos',cx-r+65,cy-12); ctx.fillText('reais positivos',cx+r-65,cy-12);
-  // ⊥ is an extra algebraic element, not a point of the projective circle.
-  const bx=cx, by=cy+315;
-  ctx.beginPath(); ctx.moveTo(cx,cy+r); ctx.lineTo(bx,by-17); ctx.setLineDash([5,6]); ctx.strokeStyle='rgba(255,191,69,.55)'; ctx.stroke(); ctx.setLineDash([]);
-  ctx.beginPath(); ctx.arc(bx,by,13,0,Math.PI*2); ctx.fillStyle='#ffbf45'; ctx.shadowColor='#ffbf45'; ctx.shadowBlur=18; ctx.fill(); ctx.shadowBlur=0;
-  ctx.fillStyle='#ffcf70'; ctx.font='bold 16px sans-serif'; ctx.fillText('⊥ = 0/0',bx,by+34);
-  if (value.kind === 'bottom') {
-    ctx.beginPath(); ctx.arc(bx,by,21,0,Math.PI*2); ctx.strokeStyle='#fff0c2'; ctx.lineWidth=3; ctx.stroke();
-  } else {
-    const p=pointFor(value,cx,cy,r);
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(p.x,p.y); ctx.strokeStyle=value.kind==='infinity'?'#ff6de8':'#68d8ff'; ctx.lineWidth=4; ctx.stroke();
-    ctx.beginPath(); ctx.arc(p.x,p.y,8,0,Math.PI*2); ctx.fillStyle=value.kind==='infinity'?'#ff6de8':'#69f0d3'; ctx.shadowColor=ctx.fillStyle; ctx.shadowBlur=15; ctx.fill(); ctx.shadowBlur=0;
+  const bg=ctx.createRadialGradient(cx,cy,20,cx,cy,r*2.5);bg.addColorStop(0,'#1b2440');bg.addColorStop(1,'#08121e');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle='rgba(217,226,255,.72)'; ctx.lineWidth=2; ctx.stroke();
+  ctx.strokeStyle='rgba(181,200,232,.16)'; ctx.lineWidth=1;
+  for(let i=1;i<=4;i++){ ctx.beginPath(); ctx.arc(cx,cy,r*i/5,0,Math.PI*2); ctx.stroke(); }
+  ctx.beginPath(); ctx.moveTo(cx-r,cy); ctx.lineTo(cx+r,cy); ctx.moveTo(cx,cy-r); ctx.lineTo(cx,cy+r); ctx.strokeStyle='rgba(209,222,247,.22)'; ctx.stroke();
+  ctx.font='15px Georgia'; ctx.textAlign='center'; ctx.fillStyle='#ff77d9'; ctx.fillText('∞',cx,cy-r-15); ctx.fillStyle='#72dcff'; ctx.fillText('0',cx,cy+r+24);
+  const bx=cx, by=cy+r+70; ctx.setLineDash([5,6]); ctx.beginPath(); ctx.moveTo(cx,cy+r+4); ctx.lineTo(bx,by-13); ctx.strokeStyle='rgba(255,202,104,.48)'; ctx.stroke(); ctx.setLineDash([]); ctx.beginPath(); ctx.arc(bx,by,9,0,Math.PI*2); ctx.fillStyle='#ffca68'; ctx.shadowColor='#ffca68'; ctx.shadowBlur=15; ctx.fill(); ctx.shadowBlur=0; ctx.fillStyle='#ffdb91'; ctx.font='14px Georgia'; ctx.fillText('⊥ = 0/0',bx,by+25);
+
+  const samples=Array.from({length:61},(_,i)=>-12+i*0.4);
+  const realSamples=[];
+  for(const x of samples){
+    const y=transform(x);
+    const p=project(y,cx,cy,r);
+    realSamples.push(p);
+    const alpha=.22 + .45*(1 - Math.min(1,Math.abs(x)/14));
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.lineTo(p.x,p.y);
+    ctx.strokeStyle = (p.kind === 'inf') ? `rgba(255,119,217,${alpha})` : (p.kind === 'bot' ? `rgba(255,202,104,${alpha})` : `rgba(104,216,255,${alpha})`);
+    ctx.lineWidth = 1.25;
+    ctx.stroke();
   }
-  ctx.beginPath(); ctx.arc(cx,cy,4,0,Math.PI*2); ctx.fillStyle='#eaf2ff'; ctx.fill();
+
+  let spread=0;if(realSamples.length){
+    const mx=realSamples.reduce((s,p)=>s+p.x,0)/realSamples.length;
+    const my=realSamples.reduce((s,p)=>s+p.y,0)/realSamples.length;
+    spread = realSamples.reduce((s,p)=>s+Math.hypot(p.x-mx,p.y-my),0)/realSamples.length / r;
+  }
+  const concentration = Math.max(0,1-Math.min(1,spread));
+  ctx.globalAlpha = 0.12 + 0.22 * concentration;
+  for(let j=1;j<=3;j++){
+    ctx.beginPath();
+    ctx.arc(cx,cy,Math.max(10,r*(0.1 + j*0.08)*(1-0.4*concentration)),0,Math.PI*2);
+    ctx.strokeStyle='#a998ff';
+    ctx.lineWidth=1.3;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  const current = transform(Number(controls.x.value));
+  const p = project(current,cx,cy,r);
+  ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(p.x,p.y); ctx.strokeStyle=colorFor(p.kind); ctx.lineWidth=4; ctx.shadowColor=colorFor(p.kind); ctx.shadowBlur=13; ctx.stroke();
+  ctx.beginPath(); ctx.arc(p.x,p.y,7,0,Math.PI*2); ctx.fillStyle=colorFor(p.kind); ctx.fill(); ctx.shadowBlur=0;
+  ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.fillStyle='#f4edff'; ctx.shadowColor='#c3a9ff'; ctx.shadowBlur=20; ctx.fill(); ctx.shadowBlur=0;
 }
-let history=[];
-function evaluate(expression) {
+function updateMappedValue(){
+  const x=Number(controls.x.value), y=transform(x);
+  controls.xo.textContent = fmt(x);
+  controls.co.textContent = fmt(Number(controls.c.value));
+  controls.mapped.textContent = y === INF ? '∞' : y === BOT ? '⊥ (0/0)' : fmt(y);
+  modeLabel();
+  draw();
+}
+function parseSimple(expr){
+  const s=expr.trim().replaceAll('∞','inf').replaceAll('×','*').replaceAll('÷','/').replaceAll('⊥','bot');
+  const tokens=s.match(/inf|bot|(?:\d+(?:\.\d*)?|\.\d+)|[()+*/-]/gi)||[];
+  if(tokens.join('').toLowerCase()!==s.replace(/\s/g,'').toLowerCase()) throw Error('Use números, inf, ⊥ e os operadores +, −, ×, ÷.');
+  let i=0;
+  const valueFor = token => { const t=token.toLowerCase(); if(t==='inf') return INF; if(t==='bot') return BOT; const n=Number(t); if(!Number.isFinite(n)) throw Error(`Valor inválido: ${token}`); return n; };
+  function primary(){
+    const token=tokens[i++];
+    if(token===undefined) throw Error('Expressão incompleta.');
+    if(token==='('){ const v=exprAdd(); if(tokens[i++]!==')') throw Error('Falta fechar parênteses.'); return v; }
+    if(token==='-'){ return -primary(); }
+    if(token==='+'){ return primary(); }
+    return valueFor(token);
+  }
+  function applyOp(a,b,op){
+    if (a === BOT || b === BOT) return BOT;
+    if (op === '+') { if (a === INF && b === INF) return BOT; if (a === INF || b === INF) return INF; return a + b; }
+    if (op === '-') { if (a === INF || b === INF) return BOT; return a - b; }
+    if (op === '*') { if ((a === INF && b === 0) || (b === INF && a === 0)) return BOT; if (a === INF || b === INF) return INF; return a * b; }
+    if (op === '/') { if (a === INF && b === INF) return BOT; if (b === INF) return a === INF ? BOT : 0; if (a === INF) return b === 0 ? BOT : INF; if (b === 0) return a === 0 ? BOT : INF; return a / b; }
+    throw Error(`Operador inválido: ${op}`);
+  }
+  function term(){ let a=primary(); while(tokens[i]==='*'||tokens[i]==='/'){ const op=tokens[i++]; a=applyOp(a,primary(),op); } return a; }
+  function exprAdd(){ let a=term(); while(tokens[i]==='+'||tokens[i]==='-'){ const op=tokens[i++]; a=applyOp(a,term(),op); } return a; }
+  const result = exprAdd(); if(i !== tokens.length) throw Error(`Token inesperado: ${tokens[i]}`); return result;
+}
+function resultText(v){ if(v===INF)return '∞'; if(v===BOT)return '⊥ (0/0)'; return Number(v).toFixed(3).replace(/\.0+$|(?<=\.[0-9]*?)0+$/,''); }
+function evaluate(){
   try {
-    const value=parse(expression);
-    resultEl.textContent=show(value);
-    alertEl.textContent=value.kind==='bottom' ? 'Resultado ⊥: elemento excepcional absorvente na roda dos racionais; ele é mostrado fora do círculo projetivo.' : value.kind==='infinity' ? 'Resultado ∞: os dois sentidos infinitos correspondem ao mesmo polo norte da reta projetiva.' : 'Resultado racional exato. O círculo mostra sua posição na reta projetiva; não representa a operação como soma de vetores.';
-    history.unshift({expression,value}); history=history.slice(0,6);
-    historyEl.replaceChildren(...history.map(entry=>{const li=document.createElement('li');li.className='history-item';const a=document.createElement('span');a.className='history-expression';a.textContent=entry.expression;const b=document.createElement('span');b.className='history-result';b.textContent=show(entry.value);li.append(a,b);return li;}));
-    draw(value);
-  } catch(error) { resultEl.textContent='Erro'; alertEl.textContent=error.message; }
+    const expr=$('expression').value, v=parseSimple(expr);
+    const valueText = resultText(v);
+    controls.notice.textContent = `${expr} = ${valueText}. Resultado calculado pelas regras didáticas desta roda.`;
+    if(v === BOT) controls.mode.value = 'bottom';
+    else if(v === INF) controls.mode.value = 'infinity';
+    else { controls.mode.value = 'translate'; controls.x.value = String(Math.max(-5,Math.min(5,Number(v)))); }
+    updateMappedValue();
+  } catch (e) {
+    controls.notice.textContent = e.message;
+  }
 }
-document.getElementById('evaluate').addEventListener('click',()=>evaluate(input.value));
-input.addEventListener('keydown',event=>{if(event.key==='Enter') evaluate(input.value);});
-document.querySelectorAll('.quick-button').forEach(button=>button.addEventListener('click',()=>{input.value=button.dataset.expression;evaluate(input.value);}));
-draw(BOT);
+controls.mode.addEventListener('change', updateMappedValue);
+controls.x.addEventListener('input', updateMappedValue);
+controls.c.addEventListener('input', updateMappedValue);
+$('evaluate').addEventListener('click', evaluate);
+$('expression').addEventListener('keydown', e => { if (e.key === 'Enter') evaluate(); });
+document.querySelectorAll('.presets button').forEach(btn => btn.addEventListener('click', () => { $('expression').value = btn.dataset.expression; evaluate(); }));
+$('sweep').addEventListener('click', () => {
+  if (sweepTimer) {
+    clearInterval(sweepTimer); sweepTimer = null; $('sweep').textContent = '▶ Percorrer x automaticamente'; return;
+  }
+  let t=-5; controls.x.value = String(t);
+  $('sweep').textContent = '■ Parar percurso';
+  sweepTimer=setInterval(()=>{ t += 0.06; if (t>5) t = -5; controls.x.value = String(t); updateMappedValue(); }, 30);
+});
+updateMappedValue();
