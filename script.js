@@ -300,6 +300,34 @@ function samplePoints(samples) {
   const g = geometry();
   return samples.map(item => ({ ...item, point: project(item.value, g) }));
 }
+function drawFamilyTrace(points) {
+  if (points.length < 2) return;
+
+  ctx.save();
+  ctx.beginPath();
+  let started = false;
+
+  for (const { value, point } of points) {
+    if (isBot(value)) {
+      started = false;
+      continue;
+    }
+
+    if (!started) {
+      ctx.moveTo(point.x, point.y);
+      started = true;
+    } else {
+      ctx.lineTo(point.x, point.y);
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(165, 223, 255, 0.78)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(104, 216, 255, 0.8)';
+  ctx.shadowBlur = 12;
+  ctx.stroke();
+  ctx.restore();
+}
 function drawChart(samples, highlightOnly = false) {
   const g = geometry();
   drawBase(g);
@@ -310,6 +338,7 @@ function drawChart(samples, highlightOnly = false) {
 
   if (allBot) drawCollapseCenter(g);
   if (allInf) drawInfinityAxis(g);
+  drawFamilyTrace(points);
 
   const origin = mirrorPoint({ x: g.cx, y: g.cy, kind: 'real' }, g);
 
@@ -435,6 +464,54 @@ function toggleMirror(axis) {
   updateMirrorUI();
   if (state.ast) drawChart(getSamples(state.ast), false);
 }
+function sampleParameterFromItem(item) {
+  const match = /^(x|c)=/i.exec(item.parameter || '');
+  if (!match) return null;
+  const name = match[1].toLowerCase();
+  const value = Number(item.parameter.slice(name.length + 1));
+  return Number.isFinite(value) ? { name, value } : null;
+}
+function nearestSampleAt(event) {
+  if (!state.ast) return null;
+  const rect = canvas.getBoundingClientRect();
+  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
+  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  const g = geometry();
+  let nearest = null;
+
+  for (const item of samplePoints(getSamples(state.ast))) {
+    const distance = Math.hypot(item.point.x - x, item.point.y - y);
+    if (!nearest || distance < nearest.distance) nearest = { ...item, distance };
+  }
+
+  const threshold = Math.max(18, g.r * 0.055);
+  return nearest && nearest.distance <= threshold ? nearest : null;
+}
+canvas.addEventListener('pointermove', event => {
+  const item = nearestSampleAt(event);
+  const parameter = item ? sampleParameterFromItem(item) : null;
+  canvas.style.cursor = parameter ? 'pointer' : 'default';
+
+  if (!item || !parameter) {
+    canvas.removeAttribute('title');
+    return;
+  }
+
+  canvas.title = `${parameter.name.toUpperCase()} = ${format(parameter.value)} · resultado: ${format(item.value)}`;
+});
+canvas.addEventListener('pointerleave', () => {
+  canvas.style.cursor = 'default';
+  canvas.removeAttribute('title');
+});
+canvas.addEventListener('click', event => {
+  const item = nearestSampleAt(event);
+  const parameter = item ? sampleParameterFromItem(item) : null;
+  if (!parameter) return;
+
+  const slider = $(`${parameter.name}Value`);
+  slider.value = String(parameter.value);
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+});
 $('calculator').addEventListener('submit', event => { event.preventDefault(); runExpression(); });
 input.addEventListener('input', () => input.setAttribute('aria-invalid', 'false'));
 document.querySelectorAll('.presets button').forEach(button => button.addEventListener('click', () => { input.value = button.dataset.expression; runExpression(); }));
